@@ -15,6 +15,18 @@ import pandas as pd
 import numpy as np
 
 # =========================================================
+# LIBRERIAS GRAFICAS (ANTI-PARPADEO)
+# =========================================================
+from rich.live import Live
+from rich.panel import Panel
+from rich.console import Group, Console
+from rich.text import Text
+from rich.table import Table
+from rich.layout import Layout
+from rich.align import Align
+from rich.status import Status
+
+# =========================================================
 # SISTEMA DE LOGGING PROFESIONAL
 # =========================================================
 logging.basicConfig(
@@ -39,35 +51,33 @@ TELEGRAM_CHAT_ID = ""
 ALERTAS_SONORAS = True  
 
 # =========================================================
-# PALETA DE COLORES ANSI
+# PALETA DE COLORES Y EMOJIS UI
 # =========================================================
-RESET = '\033[0m'
-GREEN = '\033[92m'
-DARK_GREEN = '\033[32m'
-RED = '\033[91m'
-DARK_RED = '\033[31m'
-CYAN = '\033[96m'
-YELLOW = '\033[93m'
-MAGENTA = '\033[95m'
-BOLD = '\033[1m'
-WHITE = '\033[97m'
-DARK_GRAY = '\033[90m'
+RESET = '[/]'
+GREEN = '[bold green]'
+DARK_GREEN = '[green]'
+RED = '[bold red]'
+DARK_RED = '[red]'
+CYAN = '[bold cyan]'
+YELLOW = '[bold yellow]'
+MAGENTA = '[bold magenta]'
+BOLD = '[bold]'
+WHITE = '[bold white]'
+DARK_GRAY = '[grey74]'
 
-if os.name == 'nt':
-    os.system('color')
+console = Console()
 
 # =========================================================
 # VALIDACION DE LIBRERIAS PROFESIONALES
 # =========================================================
 try:
     import websocket
-    import pandas as pd
     import pandas_ta as ta
 except ImportError as e:
     logging.critical(f"Librerias faltantes: {e}")
-    print(f"{RED}[!] Atencion! Faltan librerias profesionales.{RESET}")
-    print(f"{YELLOW}Por favor, abre tu terminal y ejecuta el siguiente comando:{RESET}")
-    print(f"{WHITE}pip install pandas pandas-ta websocket-client requests urllib3{RESET}")
+    console.print(f"{RED}[!] Atencion! Faltan librerias profesionales.{RESET}")
+    console.print(f"{YELLOW}Por favor, abre tu terminal y ejecuta el siguiente comando:{RESET}")
+    console.print(f"{WHITE}pip install rich pandas pandas-ta websocket-client requests urllib3{RESET}")
     exit()
 
 # =========================================================
@@ -124,7 +134,7 @@ ultima_alerta_csv = 0
 recent_trades_vp = deque(maxlen=10000)
 
 # =========================================================
-# FUNCIONES AUXILIARES
+# FUNCIONES AUXILIARES Y RENDERIZADO VISUAL
 # =========================================================
 def cargar_configuracion():
     global TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, ALERTAS_SONORAS
@@ -157,49 +167,40 @@ def registrar_alerta_csv(datos_fila):
             ultima_alerta_csv = time.time()
         except: pass
 
-def formato_liq(p_liq, p_act):
-    # Detectar el "Efecto Iman" si esta a menos del 0.3%
-    if p_act > 0 and abs(p_liq - p_act) / p_act < 0.003:
-        return f"${p_liq:,.0f} {YELLOW}[IMAN!]{RESET}"
-    return f"${p_liq:,.0f}"
-
-# =========================================================
-# MOTOR VISUAL BLINDADO (100% ASCII)
-# =========================================================
-def imprimir_linea_caja(texto, align="left", color_borde=CYAN):
-    ANCHO_INTERNO = 80
-    ANSI_ESCAPE = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
-    texto_limpio = ANSI_ESCAPE.sub('', str(texto))
-    largo = len(texto_limpio)
-    
-    espacios_totales = max(0, ANCHO_INTERNO - largo)
-    if align == "center":
-        izq = espacios_totales // 2
-        der = espacios_totales - izq
-        texto_pad = (" " * izq) + texto + (" " * der)
+def formato_liq(p_liq, p_act, vol=0.0, moneda=""):
+    if vol > 0:
+        base = f"${p_liq:,.0f} [dim]({vol:,.1f} {moneda})[/dim]"
     else:
-        texto_pad = texto + (" " * espacios_totales)
-    print(f"{color_borde}║ {RESET}{texto_pad} {color_borde}║{RESET}")
-
-def imprimir_separador_caja(tipo="medio", color_borde=CYAN):
-    ANCHO_INTERNO = 82
-    chars = {"top": ["╔", "═", "╗"], "medio": ["╠", "═", "╣"], "bot": ["╚", "═", "╝"]}
-    c = chars.get(tipo)
-    print(f"{color_borde}{BOLD}{c[0]}{c[1] * ANCHO_INTERNO}{c[2]}{RESET}")
+        base = f"${p_liq:,.0f}"
+        
+    if p_act > 0 and abs(p_liq - p_act) / p_act < 0.003:
+        return f"{base} {YELLOW}🔥 [IMÁN]{RESET}"
+    return base
 
 def dibujar_barra(pct_bids):
     bloques_verdes = int((pct_bids / 100) * 20)
     bloques_rojos = max(0, 20 - bloques_verdes)
-    return f"{GREEN}{'█' * bloques_verdes}{RED}{'█' * bloques_rojos}{RESET}"
+    return f"{GREEN}{'█' * bloques_verdes}{RESET}{RED}{'█' * bloques_rojos}{RESET}"
 
 def dibujar_barra_madurez(pct):
     bloques_llenos = int((pct / 100) * 20)
     bloques_vacios = max(0, 20 - bloques_llenos)
     col = RED if pct < 40 else YELLOW if pct < 100 else GREEN
-    return f"{col}{'█' * bloques_llenos}{DARK_GRAY}{'░' * bloques_vacios}{RESET}"
+    return f"{col}{'━' * bloques_llenos}{RESET}{DARK_GRAY}{'╌' * bloques_vacios}{RESET}"
+
+def formatear_tendencia(tendencia):
+    if "ALCISTA" in tendencia: return f"{GREEN}🐂 {tendencia}{RESET}"
+    elif "BAJISTA" in tendencia: return f"{RED}🐻 {tendencia}{RESET}"
+    else: return f"{YELLOW}🦀 {tendencia}{RESET}"
+
+def formatear_valle(valle_color, valor):
+    if "VERDE CLARO" in valle_color: return f"{GREEN}🟩 Alcista (▲) [{valor:.2f}]{RESET}"
+    elif "VERDE OSCURO" in valle_color: return f"{DARK_GREEN}🌲 Bajista (▼) [{valor:.2f}]{RESET}"
+    elif "ROJO CLARO" in valle_color: return f"{RED}🟥 Bajista (▼) [{valor:.2f}]{RESET}"
+    else: return f"{DARK_RED}🧱 Alcista (▲) [{valor:.2f}]{RESET}"
 
 # =========================================================
-# HERRAMIENTAS
+# HERRAMIENTAS DE ALERTA
 # =========================================================
 def emitir_sonido():
     global ultima_alerta_sonora
@@ -303,6 +304,10 @@ def procesar_indicadores(res):
     ind['rsi'] = ultimo['rsi']
     ind['atr'] = ultimo['atr']
     ind['sqz_on'] = ultimo['sqz_on']
+    
+    # EXTRAEMOS LOS LIMITES DEL RANGO (MÁXIMOS Y MÍNIMOS DE 20 PERIODOS)
+    ind['hh_20'] = highest_high.iloc[-1]
+    ind['ll_20'] = lowest_low.iloc[-1]
     
     valle_actual = ultimo['valle']
     valle_previo = previo['valle']
@@ -471,24 +476,21 @@ def iniciar_websocket_futuros_liq():
             time.sleep(5)
 
 # =========================================================
-# BUCLE PRINCIPAL
+# BUCLE PRINCIPAL (RENDERIZADO MEJORADO)
 # =========================================================
 def main():
     global simbolo_rest, simbolo_ws, stats_mercado, timeframes, is_running, ls_ratio, high_24h, btc_macro_trend, cache_proy
     
     cargar_configuracion()
 
-    os.system('cls' if os.name == 'nt' else 'clear')
-    imprimir_separador_caja("top", CYAN)
-    imprimir_linea_caja(f"RADAR INSTITUCIONAL: TRADINGLATINO + HFT + ORDER FLOW", align="center")
-    imprimir_separador_caja("bot", CYAN)
+    console.clear()
+    console.print(Panel(Align.center(f"[bold cyan]🚀 RADAR QUANT INSTITUCIONAL v3.0[/]\n[italic]TradingLatino + HFT Order Flow Dashboard[/]"), border_style="cyan"))
     
-    par_input = input("\n>> Moneda a analizar (Ej: BTCUSDT): ").strip().upper()
+    par_input = console.input("\n[bold white]>> 🪙 Moneda a analizar (Ej: BTCUSDT): [/]").strip().upper()
     if par_input: simbolo_rest = par_input; simbolo_ws = par_input.lower()
     moneda_base = simbolo_rest.replace('USDT', '').replace('BUSD', '').replace('USDC', '')
 
-    print(f"\n{YELLOW}Iniciando Motor Quant. Sincronizando Nodos de Datos...{RESET}")
-
+    # --- PANTALLA DE CARGA CON ANIMACIÓN ---
     threading.Thread(target=actualizar_datos_globales, daemon=True).start()
     threading.Thread(target=iniciar_websocket_spot, daemon=True).start()
     threading.Thread(target=iniciar_websocket_futuros_liq, daemon=True).start()
@@ -496,396 +498,529 @@ def main():
     
     tiempo_inicio_carga = time.time()
     
-    while is_running:
-        book_ok = snapshot_loaded
-        klines_ok = all(tf in indicadores and 'ema55' in indicadores[tf] and not math.isnan(indicadores[tf]['ema55']) for tf in timeframes)
-        macro_ok = high_24h > 0
-        
-        if time.time() - tiempo_inicio_carga > 15:
-            if ls_ratio == 0.0: ls_ratio = 1.0 
-            if high_24h == 0: high_24h = precio_actual if precio_actual > 0 else 1.0
+    with Status("[bold yellow]Iniciando Motores Quant y Conectando Nodos...", spinner="dots12") as status:
+        while is_running:
+            book_ok = snapshot_loaded
+            klines_ok = all(tf in indicadores and 'ema55' in indicadores[tf] and not math.isnan(indicadores[tf]['ema55']) for tf in timeframes)
+            macro_ok = high_24h > 0
+            
+            if time.time() - tiempo_inicio_carga > 15:
+                if ls_ratio == 0.0: ls_ratio = 1.0 
+                if high_24h == 0: high_24h = precio_actual if precio_actual > 0 else 1.0
 
-        ls_ok = ls_ratio > 0.0
+            ls_ok = ls_ratio > 0.0
 
-        k_st = "OK" if klines_ok else "Descargando..."
-        b_st = f"{len(bids_local)+len(asks_local)}/5000+" if book_ok else "Conectando..."
-        m_st = "OK" if macro_ok else "Obteniendo..."
-        ls_st = "OK" if ls_ok else "Calculando..."
+            k_st = "[green]✓[/]" if klines_ok else "[yellow]Descargando...[/]"
+            b_st = f"[green]✓ ({len(bids_local)+len(asks_local)} Nodos)[/]" if book_ok else "[yellow]Conectando...[/]"
+            m_st = "[green]✓[/]" if macro_ok else "[yellow]Obteniendo...[/]"
+            ls_st = "[green]✓[/]" if ls_ok else "[yellow]Calculando...[/]"
 
-        print(f"\r{CYAN}[*] Iniciando -> Klines: [{k_st}] | Book: [{b_st}] | Macro: [{m_st}] | L/S: [{ls_st}]{RESET}   ", end="", flush=True)
+            status.update(f"[bold cyan]Sincronización en curso[/]\nKlines: {k_st} | L/S Ratio: {ls_st}\nOrderbook: {b_st} | Macro: {m_st}")
+            
+            if book_ok and klines_ok and macro_ok and ls_ok:
+                break
+            time.sleep(0.5)
         
-        if book_ok and klines_ok and macro_ok and ls_ok:
-            break
-        time.sleep(0.5)
-        
-    time.sleep(1)
+    time.sleep(0.5)
     start_time = time.time()
 
-    while is_running:
-        time.sleep(2.5)
-        os.system('cls' if os.name == 'nt' else 'clear')
-        
-        # Snapshot Seguro
-        with data_lock:
-            bids_snapshot = dict(bids_local)
-            asks_snapshot = dict(asks_local)
-            trades_snapshot = list(recent_trades_vp)
-            cvd_snapshot = list(cvd_history)
-
-        # 0. MADUREZ
-        elapsed_sec = time.time() - start_time
-        madurez_pct = min(100, (elapsed_sec / 180) * 100) 
-        col_madurez = RED if madurez_pct < 40 else YELLOW if madurez_pct < 100 else GREEN
-        txt_madurez = "INESTABLE" if madurez_pct < 40 else "CALIBRANDO" if madurez_pct < 100 else "OPTIMO"
-        barra_madurez = dibujar_barra_madurez(madurez_pct)
-
-        # 1. HFT Y PERFIL DE VOLUMEN
-        bin_size = precio_actual * 0.002 
-        b_clust, a_clust = {}, {}
-        vol_bids_total = 0.0
-        vol_asks_total = 0.0
-        
-        for p, q in bids_snapshot.items():
-            if p < precio_actual and p > precio_actual * 0.8:
-                k = math.floor(p / bin_size) * bin_size; b_clust[k] = b_clust.get(k, 0) + q
-                vol_bids_total += q
-        for p, q in asks_snapshot.items():
-            if p > precio_actual and p < precio_actual * 1.2:
-                k = math.ceil(p / bin_size) * bin_size; a_clust[k] = a_clust.get(k, 0) + q
-                vol_asks_total += q
-                
-        top_bids = sorted(b_clust.items(), key=lambda x: x[1], reverse=True)
-        top_asks = sorted(a_clust.items(), key=lambda x: x[1], reverse=True)
-        
-        master_bid = top_bids[0] if top_bids else (0,0)
-        master_ask = top_asks[0] if top_asks else (0,0)
-        scalp_bid = sorted(top_bids[:5], key=lambda x: x[0], reverse=True)[0] if top_bids else (0,0)
-        scalp_ask = sorted(top_asks[:5], key=lambda x: x[0])[0] if top_asks else (0,0)
-
-        total_book_vol = vol_bids_total + vol_asks_total if (vol_bids_total + vol_asks_total) > 0 else 1
-        pct_compradores = (vol_bids_total / total_book_vol) * 100
-
-        # VWAP BANDS Y WHALE DOMINANCE
-        vp_bins = {}
-        vwap_actual = precio_actual
-        vwap_std = 0.0
-        pct_ballenas = 0.0
-        pct_minorista = 0.0
-        
-        if len(trades_snapshot) > 0:
-            vp_step = precio_actual * 0.002 
-            sum_pv = 0.0
-            sum_v = 0.0
-            vol_ballenas = 0.0
-            vol_minorista = 0.0
+    frames_spinner = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
+    
+    # INICIO DE RICH LIVE (SIN PARPADEO)
+    with Live(refresh_per_second=4, screen=True) as live:
+        while is_running:
+            time.sleep(0.25)
             
-            for tp_price, tv_vol, _ in trades_snapshot:
-                b = round(tp_price / vp_step) * vp_step
-                vp_bins[b] = vp_bins.get(b, 0) + tv_vol
-                sum_pv += (tp_price * tv_vol)
-                sum_v += tv_vol
-                
-                # Clasificacion Institucional
-                if tv_vol >= 20000: vol_ballenas += tv_vol
-                elif tv_vol < 1000: vol_minorista += tv_vol
-                
-            poc_price = max(vp_bins, key=vp_bins.get) if vp_bins else precio_actual
-            if sum_v > 0:
-                vwap_actual = sum_pv / sum_v
-                variance = sum((tv_vol * (tp_price - vwap_actual)**2) for tp_price, tv_vol, _ in trades_snapshot) / sum_v
-                vwap_std = math.sqrt(variance)
-                pct_ballenas = (vol_ballenas / sum_v) * 100
-                pct_minorista = (vol_minorista / sum_v) * 100
-        else:
-            poc_price = precio_actual
+            with data_lock:
+                bids_snapshot = dict(bids_local)
+                asks_snapshot = dict(asks_local)
+                trades_snapshot = list(recent_trades_vp)
+                cvd_snapshot = list(cvd_history)
 
-        # MAPA DE CALOR DE LIQUIDACIONES (MAGNET ZONES)
-        liq_short_100x = poc_price * 1.01 
-        liq_short_50x = poc_price * 1.02  
-        liq_short_25x = poc_price * 1.04  
-        liq_long_100x = poc_price * 0.99
-        liq_long_50x = poc_price * 0.98
-        liq_long_25x = poc_price * 0.96
+            frame_actual = frames_spinner[int(time.time() * 10) % len(frames_spinner)]
 
-        # 2. DIVERGENCIAS DE CVD
-        divergencia_cvd = "NEUTRA (Flujo Normal)"
-        col_div = DARK_GRAY
-        if len(cvd_snapshot) >= 12:
-            p_ant = cvd_snapshot[0]['precio']
-            c_ant = cvd_snapshot[0]['cvd']
-            p_act = cvd_snapshot[-1]['precio']
-            c_act = cvd_snapshot[-1]['cvd']
+            # 0. MADUREZ
+            elapsed_sec = time.time() - start_time
+            madurez_pct = min(100, (elapsed_sec / 180) * 100) 
+            col_madurez = RED if madurez_pct < 40 else YELLOW if madurez_pct < 100 else GREEN
+            txt_madurez = "INICIANDO" if madurez_pct < 40 else "CALIBRANDO" if madurez_pct < 100 else "ÓPTIMO"
+            barra_madurez = dibujar_barra_madurez(madurez_pct)
+
+            # 1. HFT Y PERFIL DE VOLUMEN
+            bin_size = precio_actual * 0.002 
+            b_clust, a_clust = {}, {}
+            vol_bids_total = 0.0
+            vol_asks_total = 0.0
             
-            if p_act < p_ant * 0.999 and c_act > c_ant:
-                divergencia_cvd = "ABSORCION ALCISTA (Ballenas Comprando)"
-                col_div = GREEN
-            elif p_act > p_ant * 1.001 and c_act < c_ant:
-                divergencia_cvd = "DISTRIBUCION BAJISTA (Ballenas Vendiendo)"
-                col_div = RED
+            for p, q in bids_snapshot.items():
+                if p < precio_actual and p > precio_actual * 0.8:
+                    k = math.floor(p / bin_size) * bin_size; b_clust[k] = b_clust.get(k, 0) + q
+                    vol_bids_total += q
+            for p, q in asks_snapshot.items():
+                if p > precio_actual and p < precio_actual * 1.2:
+                    k = math.ceil(p / bin_size) * bin_size; a_clust[k] = a_clust.get(k, 0) + q
+                    vol_asks_total += q
+                    
+            top_bids = sorted(b_clust.items(), key=lambda x: x[1], reverse=True)
+            top_asks = sorted(a_clust.items(), key=lambda x: x[1], reverse=True)
+            
+            master_bid = top_bids[0] if top_bids else (0,0)
+            master_ask = top_asks[0] if top_asks else (0,0)
+            scalp_bid = sorted(top_bids[:5], key=lambda x: x[0], reverse=True)[0] if top_bids else (0,0)
+            scalp_ask = sorted(top_asks[:5], key=lambda x: x[0])[0] if top_asks else (0,0)
 
-        estado_tape = f"{RED}EXTREMA{RESET}" if tape_speed > 30 else f"{YELLOW}ALTA{RESET}" if tape_speed > 10 else f"{GREEN}NORMAL{RESET}"
+            total_book_vol = vol_bids_total + vol_asks_total if (vol_bids_total + vol_asks_total) > 0 else 1
+            pct_compradores = (vol_bids_total / total_book_vol) * 100
 
-        # 3. TRADINGLATINO MULTITEMPORAL
-        ind_1d, ind_4h, ind_1h = indicadores['1d'], indicadores['4h'], indicadores['1h']
+            # VWAP BANDS Y WHALE DOMINANCE
+            vp_bins = {}
+            vwap_actual = precio_actual
+            vwap_std = 0.0
+            pct_ballenas = 0.0
+            pct_minorista = 0.0
+            
+            if len(trades_snapshot) > 0:
+                vp_step = precio_actual * 0.002 
+                sum_pv = 0.0
+                sum_v = 0.0
+                vol_ballenas = 0.0
+                vol_minorista = 0.0
+                
+                for tp_price, tv_vol, _ in trades_snapshot:
+                    b = round(tp_price / vp_step) * vp_step
+                    vp_bins[b] = vp_bins.get(b, 0) + tv_vol
+                    sum_pv += (tp_price * tv_vol)
+                    sum_v += tv_vol
+                    
+                    if tv_vol >= 20000: vol_ballenas += tv_vol
+                    elif tv_vol < 1000: vol_minorista += tv_vol
+                    
+                poc_price = max(vp_bins, key=vp_bins.get) if vp_bins else precio_actual
+                if sum_v > 0:
+                    vwap_actual = sum_pv / sum_v
+                    variance = sum((tv_vol * (tp_price - vwap_actual)**2) for tp_price, tv_vol, _ in trades_snapshot) / sum_v
+                    vwap_std = math.sqrt(variance)
+                    pct_ballenas = (vol_ballenas / sum_v) * 100
+                    pct_minorista = (vol_minorista / sum_v) * 100
+            else:
+                poc_price = precio_actual
 
-        tend_1d = "ALCISTA" if ind_1d['ema10'] > ind_1d['ema55'] and precio_actual > ind_1d['ema55'] else "BAJISTA" if ind_1d['ema10'] < ind_1d['ema55'] and precio_actual < ind_1d['ema55'] else "RANGO"
-        col_t_1d = GREEN if "ALCISTA" in tend_1d else RED if "BAJISTA" in tend_1d else YELLOW
-        v_1d, c_v_1d = ind_1d['valle_color'], GREEN if "VERDE CLARO" in ind_1d['valle_color'] else DARK_GREEN if "VERDE OSCURO" in ind_1d['valle_color'] else RED if "ROJO CLARO" in ind_1d['valle_color'] else DARK_RED
-        
-        tend_4h = "ALCISTA" if ind_4h['ema10'] > ind_4h['ema55'] and precio_actual > ind_4h['ema55'] else "BAJISTA" if ind_4h['ema10'] < ind_4h['ema55'] and precio_actual < ind_4h['ema55'] else "RANGO"
-        col_t_4h = GREEN if "ALCISTA" in tend_4h else RED if "BAJISTA" in tend_4h else YELLOW
-        v_4h, c_v_4h = ind_4h['valle_color'], GREEN if "VERDE CLARO" in ind_4h['valle_color'] else DARK_GREEN if "VERDE OSCURO" in ind_4h['valle_color'] else RED if "ROJO CLARO" in ind_4h['valle_color'] else DARK_RED
-        dist_4h = abs(precio_actual - ind_4h['ema55']) / ind_4h['ema55'] * 100
-        sqz_state_4h = f"{RED}[COMPRESION]{RESET}" if ind_4h.get('sqz_on', False) else f"{GREEN}[LIBERADO]{RESET}"
-        
-        tend_1h = "ALCISTA" if ind_1h['ema10'] > ind_1h['ema55'] and precio_actual > ind_1h['ema55'] else "BAJISTA" if ind_1h['ema10'] < ind_1h['ema55'] and precio_actual < ind_1h['ema55'] else "RANGO"
-        col_t_1h = GREEN if "ALCISTA" in tend_1h else RED if "BAJISTA" in tend_1h else YELLOW
-        v_1h, c_v_1h = ind_1h['valle_color'], GREEN if "VERDE CLARO" in ind_1h['valle_color'] else DARK_GREEN if "VERDE OSCURO" in ind_1h['valle_color'] else RED if "ROJO CLARO" in ind_1h['valle_color'] else DARK_RED
-        dist_1h = abs(precio_actual - ind_1h['ema55']) / ind_1h['ema55'] * 100
-        sqz_state_1h = f"{RED}[COMPRESION]{RESET}" if ind_1h.get('sqz_on', False) else f"{GREEN}[LIBERADO]{RESET}"
+            # MAPA DE CALOR DE LIQUIDACIONES Y CALCULO DE VOLUMEN
+            liq_short_100x = poc_price * 1.01 
+            liq_short_50x = poc_price * 1.02  
+            liq_short_25x = poc_price * 1.04  
+            liq_long_100x = poc_price * 0.99
+            liq_long_50x = poc_price * 0.98
+            liq_long_25x = poc_price * 0.96
 
-        # 4. CEREBRO OPERATIVO Y SCORING DE CONFLUENCIA
-        dir_1h_calc = "LONG" if ind_1h['valle'] < 0 else "SHORT"
-        col_d_1h = GREEN if dir_1h_calc == "LONG" else RED
-        tend_str_1h = "A Favor de 4H" if (dir_1h_calc == "LONG" and "ALCISTA" in tend_4h) or (dir_1h_calc == "SHORT" and "BAJISTA" in tend_4h) else "Contra 4H"
-        
-        escudo_usd_scalp = 0
-        if dir_1h_calc == "LONG":
-            candidatos_s = [p for p in [poc_price, vwap_actual, scalp_bid[0]] if p < precio_actual]
-            entrada_scalp = max(candidatos_s) if candidatos_s else precio_actual
-            sl_por_muro = scalp_bid[0] * 0.998
-            sl_por_atr = entrada_scalp - (ind_1h['atr'] * 1.5)
-            sl_scalp = min(sl_por_muro, sl_por_atr) 
-            if sl_scalp >= entrada_scalp: sl_scalp = entrada_scalp * 0.99
-            tp_scalp = entrada_scalp + ((entrada_scalp - sl_scalp) * 1.5)
-            escudo_usd_scalp = scalp_bid[1] * scalp_bid[0] if scalp_bid[0] > 0 else 0
-        else:
-            candidatos_r = [p for p in [poc_price, vwap_actual, scalp_ask[0]] if p > precio_actual]
-            entrada_scalp = min(candidatos_r) if candidatos_r else precio_actual
-            sl_por_muro = scalp_ask[0] * 1.002
-            sl_por_atr = entrada_scalp + (ind_1h['atr'] * 1.5)
-            sl_scalp = max(sl_por_muro, sl_por_atr) 
-            if sl_scalp <= entrada_scalp: sl_scalp = entrada_scalp * 1.01
-            tp_scalp = entrada_scalp - ((sl_scalp - entrada_scalp) * 1.5)
-            escudo_usd_scalp = scalp_ask[1] * scalp_ask[0] if scalp_ask[0] > 0 else 0
+            # Calcular volumen real del Order Book cerca de las zonas de liquidación (rango del 0.4%)
+            def get_vol_near(price, book):
+                return sum(q for p, q in book.items() if abs(p - price) / price <= 0.004)
 
-        if dir_1h_calc != cache_proy['1h']['dir'] or cache_proy['1h']['entrada'] == 0 or abs(entrada_scalp - cache_proy['1h']['entrada']) / entrada_scalp > 0.002:
-            cache_proy['1h'] = {'dir': dir_1h_calc, 'entrada': entrada_scalp, 'sl': sl_scalp, 'tp': tp_scalp}
-        
-        e_s_show = cache_proy['1h']['entrada']
-        sl_s_show = cache_proy['1h']['sl']
-        tp_s_show = cache_proy['1h']['tp']
-        dist_sl_pct_1h = abs(e_s_show - sl_s_show) / e_s_show if e_s_show > 0 else 0
-        dist_tp_pct_1h = abs(tp_s_show - e_s_show) / e_s_show if e_s_show > 0 else 0
+            v_s_100x = get_vol_near(liq_short_100x, asks_snapshot)
+            v_s_50x = get_vol_near(liq_short_50x, asks_snapshot)
+            v_s_25x = get_vol_near(liq_short_25x, asks_snapshot)
+            
+            v_l_100x = get_vol_near(liq_long_100x, bids_snapshot)
+            v_l_50x = get_vol_near(liq_long_50x, bids_snapshot)
+            v_l_25x = get_vol_near(liq_long_25x, bids_snapshot)
 
-        score_scalp = 0
-        if "A Favor" in tend_str_1h: score_scalp += 20
-        if dist_sl_pct_1h < 0.015: score_scalp += 20
-        if dir_1h_calc == "LONG" and ("ABSORCION" in divergencia_cvd or "Normal" in divergencia_cvd): score_scalp += 20
-        if dir_1h_calc == "SHORT" and ("DISTRIBUCION" in divergencia_cvd or "Normal" in divergencia_cvd): score_scalp += 20
-        if 40 <= ind_1h['rsi'] <= 60: score_scalp += 20
-        if vwap_std > 0:
-            if dir_1h_calc == "LONG" and e_s_show > (vwap_actual + vwap_std): score_scalp -= 25 # Castigo por comprar caro
-            if dir_1h_calc == "SHORT" and e_s_show < (vwap_actual - vwap_std): score_scalp -= 25 # Castigo por vender barato
-        
-        col_score_sc = GREEN if score_scalp >= 75 else YELLOW if score_scalp >= 50 else RED
+            # 2. DIVERGENCIAS DE CVD
+            divergencia_cvd = "NEUTRA (Flujo Normal) 〰️"
+            col_div = DARK_GRAY
+            if len(cvd_snapshot) >= 12:
+                p_ant = cvd_snapshot[0]['precio']
+                c_ant = cvd_snapshot[0]['cvd']
+                p_act = cvd_snapshot[-1]['precio']
+                c_act = cvd_snapshot[-1]['cvd']
+                
+                if p_act < p_ant * 0.999 and c_act > c_ant:
+                    divergencia_cvd = "ABSORCIÓN ALCISTA (Ballenas Comprando) 🚀"
+                    col_div = GREEN
+                elif p_act > p_ant * 1.001 and c_act < c_ant:
+                    divergencia_cvd = "DISTRIBUCIÓN BAJISTA (Ballenas Vendiendo) ☄️"
+                    col_div = RED
 
-        signal_scalp = f"{DARK_GRAY}ESPERAR PATRON / SIN FUERZA{RESET}"
-        if dist_1h < 1.5 and (ind_1h['adx_slope'] < 0 or ind_1h['adx'] < 23):
-            if dir_1h_calc == "LONG" and "ROJO OSCURO" in v_1h: 
-                if ind_1h['rsi'] >= 65: signal_scalp = f"{YELLOW}BLOQUEADO: RSI Sobrecomprado ({ind_1h['rsi']:.1f}){RESET}"
-                elif ls_ratio > 2.5: signal_scalp = f"{RED}BLOQUEADO: Minoristas muy LONG ({ls_ratio:.2f}){RESET}"
-                elif simbolo_rest != "BTCUSDT" and btc_macro_trend == "BAJISTA": signal_scalp = f"{RED}BLOQUEADO: BTC Trend Bajista{RESET}"
-                elif "DISTRIBUCION" in divergencia_cvd: signal_scalp = f"{RED}BLOQUEADO: Distribucion Detectada{RESET}"
-                else: signal_scalp = f"{GREEN}{BOLD}GATILLO LONG CONFIRMADO{RESET}"
-            elif dir_1h_calc == "SHORT" and "VERDE OSCURO" in v_1h: 
-                if ind_1h['rsi'] <= 35: signal_scalp = f"{YELLOW}BLOQUEADO: RSI Sobrevendido ({ind_1h['rsi']:.1f}){RESET}"
-                elif ls_ratio < 0.6: signal_scalp = f"{RED}BLOQUEADO: Minoristas muy SHORT ({ls_ratio:.2f}){RESET}"
-                elif simbolo_rest != "BTCUSDT" and btc_macro_trend == "ALCISTA": signal_scalp = f"{RED}BLOQUEADO: BTC Trend Alcista{RESET}"
-                elif "ABSORCION" in divergencia_cvd: signal_scalp = f"{RED}BLOQUEADO: Absorcion Detectada{RESET}"
-                else: signal_scalp = f"{RED}{BOLD}GATILLO SHORT CONFIRMADO{RESET}"
+            estado_tape = f"{RED}EXTREMA ⚡{RESET}" if tape_speed > 30 else f"{YELLOW}ALTA 🔥{RESET}" if tape_speed > 10 else f"{GREEN}NORMAL 🌊{RESET}"
 
-        # --- SWING (4H) ---
-        dir_4h_calc = "LONG" if ind_4h['valle'] < 0 else "SHORT"
-        col_d_4h = GREEN if dir_4h_calc == "LONG" else RED
-        tend_str_4h = "A Favor Diario" if (dir_4h_calc == "LONG" and "ALCISTA" in tend_1d) or (dir_4h_calc == "SHORT" and "BAJISTA" in tend_1d) else "Contra Diario"
-        
-        escudo_usd_swing = 0
-        if dir_4h_calc == "LONG":
-            candidatos_s_m = [p for p in [poc_price, vwap_actual, master_bid[0]] if p < precio_actual]
-            entrada_swing = max(candidatos_s_m) if candidatos_s_m else precio_actual
-            sl_por_muro = master_bid[0] * 0.995
-            sl_por_atr = entrada_swing - (ind_4h['atr'] * 2.0)
-            sl_swing = min(sl_por_muro, sl_por_atr)
-            if sl_swing >= entrada_swing: sl_swing = entrada_swing * 0.98
-            tp_swing = entrada_swing + ((entrada_swing - sl_swing) * 2.0)
-            escudo_usd_swing = master_bid[1] * master_bid[0] if master_bid[0] > 0 else 0
-        else:
-            candidatos_r_m = [p for p in [poc_price, vwap_actual, master_ask[0]] if p > precio_actual]
-            entrada_swing = min(candidatos_r_m) if candidatos_r_m else precio_actual
-            sl_por_muro = master_ask[0] * 1.005
-            sl_por_atr = entrada_swing + (ind_4h['atr'] * 2.0)
-            sl_swing = max(sl_por_muro, sl_por_atr)
-            if sl_swing <= entrada_swing: sl_swing = entrada_swing * 1.02
-            tp_swing = entrada_swing - ((sl_swing - entrada_swing) * 2.0)
-            escudo_usd_swing = master_ask[1] * master_ask[0] if master_ask[0] > 0 else 0
+            # 3. TRADINGLATINO MULTITEMPORAL
+            ind_1d, ind_4h, ind_1h = indicadores['1d'], indicadores['4h'], indicadores['1h']
 
-        if dir_4h_calc != cache_proy['4h']['dir'] or cache_proy['4h']['entrada'] == 0 or abs(entrada_swing - cache_proy['4h']['entrada']) / entrada_swing > 0.002:
-            cache_proy['4h'] = {'dir': dir_4h_calc, 'entrada': entrada_swing, 'sl': sl_swing, 'tp': tp_swing}
-        
-        e_sw_show = cache_proy['4h']['entrada']
-        sl_sw_show = cache_proy['4h']['sl']
-        tp_sw_show = cache_proy['4h']['tp']
-        dist_sl_pct_4h = abs(e_sw_show - sl_sw_show) / e_sw_show if e_sw_show > 0 else 0
-        dist_tp_pct_4h = abs(tp_sw_show - e_sw_show) / e_sw_show if e_sw_show > 0 else 0
+            tend_1d = "ALCISTA" if ind_1d['ema10'] > ind_1d['ema55'] and precio_actual > ind_1d['ema55'] else "BAJISTA" if ind_1d['ema10'] < ind_1d['ema55'] and precio_actual < ind_1d['ema55'] else "RANGO"
+            v_1d_icon = formatear_valle(ind_1d['valle_color'], ind_1d['valle'])
+            
+            tend_4h = "ALCISTA" if ind_4h['ema10'] > ind_4h['ema55'] and precio_actual > ind_4h['ema55'] else "BAJISTA" if ind_4h['ema10'] < ind_4h['ema55'] and precio_actual < ind_4h['ema55'] else "RANGO"
+            v_4h_icon = formatear_valle(ind_4h['valle_color'], ind_4h['valle'])
+            dist_4h = abs(precio_actual - ind_4h['ema55']) / ind_4h['ema55'] * 100
+            
+            sqz_state_4h = f"{RED}[COMPRESIÓN]{RESET}" if ind_4h.get('sqz_on', False) else f"{GREEN}[EXPANSIÓN]{RESET}"
+            
+            tend_1h = "ALCISTA" if ind_1h['ema10'] > ind_1h['ema55'] and precio_actual > ind_1h['ema55'] else "BAJISTA" if ind_1h['ema10'] < ind_1h['ema55'] and precio_actual < ind_1h['ema55'] else "RANGO"
+            v_1h_icon = formatear_valle(ind_1h['valle_color'], ind_1h['valle'])
+            dist_1h = abs(precio_actual - ind_1h['ema55']) / ind_1h['ema55'] * 100
+            
+            sqz_state_1h = f"{RED}[COMPRESIÓN]{RESET}" if ind_1h.get('sqz_on', False) else f"{GREEN}[EXPANSIÓN]{RESET}"
 
-        score_swing = 0
-        if "A Favor" in tend_str_4h: score_swing += 20
-        if dist_sl_pct_4h < 0.03: score_swing += 20
-        if dir_4h_calc == "LONG" and ("ABSORCION" in divergencia_cvd or "Normal" in divergencia_cvd): score_swing += 20
-        if dir_4h_calc == "SHORT" and ("DISTRIBUCION" in divergencia_cvd or "Normal" in divergencia_cvd): score_swing += 20
-        if 40 <= ind_4h['rsi'] <= 60: score_swing += 20
-        if vwap_std > 0:
-            if dir_4h_calc == "LONG" and e_sw_show > (vwap_actual + vwap_std): score_swing -= 25 
-            if dir_4h_calc == "SHORT" and e_sw_show < (vwap_actual - vwap_std): score_swing -= 25 
+            # 4. CEREBRO OPERATIVO Y SCORING DE CONFLUENCIA
+            dir_1h_calc = "LONG 🚀" if ind_1h['valle'] < 0 else "SHORT ☄️"
+            col_d_1h = GREEN if "LONG" in dir_1h_calc else RED
+            tend_str_1h = "A Favor (4H)" if ("LONG" in dir_1h_calc and "ALCISTA" in tend_4h) or ("SHORT" in dir_1h_calc and "BAJISTA" in tend_4h) else "Contra (4H)"
+            
+            # Explicación Lógica Scalp 1H
+            if "LONG" in dir_1h_calc:
+                logica_1h = f"Oscilador direccional en Valle Inferior (Rojo) perdiendo fuerza bajista. Se busca un [bold green]impulso alcista[/] hacia la media móvil."
+            else:
+                logica_1h = f"Oscilador direccional en Valle Superior (Verde) perdiendo fuerza alcista. Se busca un [bold red]retroceso bajista[/] hacia la media móvil."
 
-        col_score_sw = GREEN if score_swing >= 75 else YELLOW if score_swing >= 50 else RED
+            # --- DETECCIÓN DE LIMITES DEL RANGO ---
+            rango_alto = ind_4h['hh_20']
+            rango_bajo = ind_4h['ll_20']
+            
+            escudo_usd_scalp = 0
+            if "LONG" in dir_1h_calc:
+                candidatos_s = [p for p in [poc_price, vwap_actual, scalp_bid[0]] if p < precio_actual]
+                entrada_scalp = max(candidatos_s) if candidatos_s else precio_actual
+                sl_por_muro = scalp_bid[0] * 0.998
+                sl_por_atr = entrada_scalp - (ind_1h['atr'] * 1.5)
+                sl_scalp = min(sl_por_muro, sl_por_atr) 
+                if sl_scalp >= entrada_scalp: sl_scalp = entrada_scalp * 0.99
+                tp_scalp = entrada_scalp + ((entrada_scalp - sl_scalp) * 1.5)
+                escudo_usd_scalp = scalp_bid[1] * scalp_bid[0] if scalp_bid[0] > 0 else 0
+            else:
+                candidatos_r = [p for p in [poc_price, vwap_actual, scalp_ask[0]] if p > precio_actual]
+                entrada_scalp = min(candidatos_r) if candidatos_r else precio_actual
+                sl_por_muro = scalp_ask[0] * 1.002
+                sl_por_atr = entrada_scalp + (ind_1h['atr'] * 1.5)
+                sl_scalp = max(sl_por_muro, sl_por_atr) 
+                if sl_scalp <= entrada_scalp: sl_scalp = entrada_scalp * 1.01
+                tp_scalp = entrada_scalp - ((sl_scalp - entrada_scalp) * 1.5)
+                escudo_usd_scalp = scalp_ask[1] * scalp_ask[0] if scalp_ask[0] > 0 else 0
 
-        signal_swing = f"{DARK_GRAY}ESPERAR PATRON / SIN FUERZA{RESET}"
-        if dist_4h < 3.0 and (ind_4h['adx_slope'] < 0 or ind_4h['adx'] < 23):
-            if dir_4h_calc == "LONG" and "ROJO OSCURO" in v_4h: 
-                if ind_4h['rsi'] >= 70: signal_swing = f"{YELLOW}BLOQUEADO: RSI Sobrecomprado ({ind_4h['rsi']:.1f}){RESET}"
-                elif ls_ratio > 2.5: signal_swing = f"{RED}BLOQUEADO: Minoristas muy LONG ({ls_ratio:.2f}){RESET}"
-                elif simbolo_rest != "BTCUSDT" and btc_macro_trend == "BAJISTA": signal_swing = f"{RED}BLOQUEADO: BTC Trend Bajista{RESET}"
-                elif "DISTRIBUCION" in divergencia_cvd: signal_swing = f"{RED}BLOQUEADO: Distribucion Detectada{RESET}"
-                else: signal_swing = f"{GREEN}{BOLD}GATILLO LONG CONFIRMADO{RESET}"
-            elif dir_4h_calc == "SHORT" and "VERDE OSCURO" in v_4h: 
-                if ind_4h['rsi'] <= 30: signal_swing = f"{YELLOW}BLOQUEADO: RSI Sobrevendido ({ind_4h['rsi']:.1f}){RESET}"
-                elif ls_ratio < 0.6: signal_swing = f"{RED}BLOQUEADO: Minoristas muy SHORT ({ls_ratio:.2f}){RESET}"
-                elif simbolo_rest != "BTCUSDT" and btc_macro_trend == "ALCISTA": signal_swing = f"{RED}BLOQUEADO: BTC Trend Alcista{RESET}"
-                elif "ABSORCION" in divergencia_cvd: signal_swing = f"{RED}BLOQUEADO: Absorcion Detectada{RESET}"
-                else: signal_swing = f"{RED}{BOLD}GATILLO SHORT CONFIRMADO{RESET}"
+            if dir_1h_calc != cache_proy['1h']['dir'] or cache_proy['1h']['entrada'] == 0 or abs(entrada_scalp - cache_proy['1h']['entrada']) / entrada_scalp > 0.002:
+                cache_proy['1h'] = {'dir': dir_1h_calc, 'entrada': entrada_scalp, 'sl': sl_scalp, 'tp': tp_scalp}
+            
+            e_s_show = cache_proy['1h']['entrada']
+            sl_s_show = cache_proy['1h']['sl']
+            tp_s_show = cache_proy['1h']['tp']
+            dist_sl_pct_1h = abs(e_s_show - sl_s_show) / e_s_show if e_s_show > 0 else 0
+            dist_tp_pct_1h = abs(tp_s_show - e_s_show) / e_s_show if e_s_show > 0 else 0
 
-        # FILTRO DE MADUREZ
-        if madurez_pct < 100:
-            if "CONFIRMADO" in signal_scalp: signal_scalp = f"{col_madurez}PRE-SEÑAL (Estabilizando al {madurez_pct:.0f}%){RESET}"
-            if "CONFIRMADO" in signal_swing: signal_swing = f"{col_madurez}PRE-SEÑAL (Estabilizando al {madurez_pct:.0f}%){RESET}"
+            score_scalp = 0
+            if "A Favor" in tend_str_1h: score_scalp += 20
+            if dist_sl_pct_1h < 0.015: score_scalp += 20
+            if "LONG" in dir_1h_calc and ("ABSORCIÓN" in divergencia_cvd or "Normal" in divergencia_cvd): score_scalp += 20
+            if "SHORT" in dir_1h_calc and ("DISTRIBUCIÓN" in divergencia_cvd or "Normal" in divergencia_cvd): score_scalp += 20
+            if 40 <= ind_1h['rsi'] <= 60: score_scalp += 20
+            if vwap_std > 0:
+                if "LONG" in dir_1h_calc and e_s_show > (vwap_actual + vwap_std): score_scalp -= 25
+                if "SHORT" in dir_1h_calc and e_s_show < (vwap_actual - vwap_std): score_scalp -= 25
+            
+            col_score_sc = GREEN if score_scalp >= 75 else YELLOW if score_scalp >= 50 else RED
 
-        # ALERTAS Y CSV
-        if madurez_pct == 100 and ("CONFIRMADO" in signal_scalp or "CONFIRMADO" in signal_swing):
-            emitir_sonido()
-            msg_tg = (
-                f"[ALERTA DE TRADING] {simbolo_rest}\n\n"
-                f"SCALPING (1H):\nDir: {dir_1h_calc}\nEntrada: ${e_s_show:,.2f}\nTP: ${tp_s_show:,.2f}\nSL: ${sl_s_show:,.2f}\nScore: {score_scalp}%\n\n"
-                f"SWING (4H):\nDir: {dir_4h_calc}\nEntrada: ${e_sw_show:,.2f}\nTP: ${tp_sw_show:,.2f}\nSL: ${sl_sw_show:,.2f}\nScore: {score_swing}%\n\n"
-                f"TradingLatino + Order Flow"
+            signal_scalp = f"{DARK_GRAY}⏳ ESPERAR PATRÓN / SIN FUERZA{RESET}"
+            if dist_1h < 1.5 and (ind_1h['adx_slope'] < 0 or ind_1h['adx'] < 23):
+                if "LONG" in dir_1h_calc and "ROJO OSCURO" in ind_1h['valle_color']: 
+                    if ind_1h['rsi'] >= 65: signal_scalp = f"{YELLOW}🚫 BLOQUEADO: RSI Sobrecomprado ({ind_1h['rsi']:.1f}){RESET}"
+                    elif ls_ratio > 2.5: signal_scalp = f"{RED}🚫 BLOQUEADO: Minoristas muy LONG ({ls_ratio:.2f}){RESET}"
+                    elif simbolo_rest != "BTCUSDT" and btc_macro_trend == "BAJISTA": signal_scalp = f"{RED}🚫 BLOQUEADO: BTC Trend Bajista{RESET}"
+                    elif "DISTRIBUCIÓN" in divergencia_cvd: signal_scalp = f"{RED}🚫 BLOQUEADO: Distribución Detectada{RESET}"
+                    else: signal_scalp = f"{GREEN}{BOLD}✅ GATILLO LONG CONFIRMADO{RESET}"
+                elif "SHORT" in dir_1h_calc and "VERDE OSCURO" in ind_1h['valle_color']: 
+                    if ind_1h['rsi'] <= 35: signal_scalp = f"{YELLOW}🚫 BLOQUEADO: RSI Sobrevendido ({ind_1h['rsi']:.1f}){RESET}"
+                    elif ls_ratio < 0.6: signal_scalp = f"{RED}🚫 BLOQUEADO: Minoristas muy SHORT ({ls_ratio:.2f}){RESET}"
+                    elif simbolo_rest != "BTCUSDT" and btc_macro_trend == "ALCISTA": signal_scalp = f"{RED}🚫 BLOQUEADO: BTC Trend Alcista{RESET}"
+                    elif "ABSORCIÓN" in divergencia_cvd: signal_scalp = f"{RED}🚫 BLOQUEADO: Absorción Detectada{RESET}"
+                    else: signal_scalp = f"{RED}{BOLD}✅ GATILLO SHORT CONFIRMADO{RESET}"
+
+            # --- SWING (4H) ---
+            dir_4h_calc = "LONG 🚀" if ind_4h['valle'] < 0 else "SHORT ☄️"
+            col_d_4h = GREEN if "LONG" in dir_4h_calc else RED
+            tend_str_4h = "A Favor (Diario)" if ("LONG" in dir_4h_calc and "ALCISTA" in tend_1d) or ("SHORT" in dir_4h_calc and "BAJISTA" in tend_1d) else "Contra (Diario)"
+            
+            # Explicación Lógica Swing 4H
+            if "LONG" in dir_4h_calc:
+                logica_4h = f"Oscilador direccional en Valle Inferior (Rojo) perdiendo fuerza bajista. Se busca un [bold green]impulso alcista[/] hacia la media móvil."
+            else:
+                logica_4h = f"Oscilador direccional en Valle Superior (Verde) perdiendo fuerza alcista. Se busca un [bold red]retroceso bajista[/] hacia la media móvil."
+
+            escudo_usd_swing = 0
+            if "LONG" in dir_4h_calc:
+                candidatos_s_m = [p for p in [poc_price, vwap_actual, master_bid[0]] if p < precio_actual]
+                entrada_swing = max(candidatos_s_m) if candidatos_s_m else precio_actual
+                sl_por_muro = master_bid[0] * 0.995
+                sl_por_atr = entrada_swing - (ind_4h['atr'] * 2.0)
+                sl_swing = min(sl_por_muro, sl_por_atr)
+                if sl_swing >= entrada_swing: sl_swing = entrada_swing * 0.98
+                tp_swing = entrada_swing + ((entrada_swing - sl_swing) * 2.0)
+                escudo_usd_swing = master_bid[1] * master_bid[0] if master_bid[0] > 0 else 0
+            else:
+                candidatos_r_m = [p for p in [poc_price, vwap_actual, master_ask[0]] if p > precio_actual]
+                entrada_swing = min(candidatos_r_m) if candidatos_r_m else precio_actual
+                sl_por_muro = master_ask[0] * 1.005
+                sl_por_atr = entrada_swing + (ind_4h['atr'] * 2.0)
+                sl_swing = max(sl_por_muro, sl_por_atr)
+                if sl_swing <= entrada_swing: sl_swing = entrada_swing * 1.02
+                tp_swing = entrada_swing - ((sl_swing - entrada_swing) * 2.0)
+                escudo_usd_swing = master_ask[1] * master_ask[0] if master_ask[0] > 0 else 0
+
+            if dir_4h_calc != cache_proy['4h']['dir'] or cache_proy['4h']['entrada'] == 0 or abs(entrada_swing - cache_proy['4h']['entrada']) / entrada_swing > 0.002:
+                cache_proy['4h'] = {'dir': dir_4h_calc, 'entrada': entrada_swing, 'sl': sl_swing, 'tp': tp_swing}
+            
+            e_sw_show = cache_proy['4h']['entrada']
+            sl_sw_show = cache_proy['4h']['sl']
+            tp_sw_show = cache_proy['4h']['tp']
+            dist_sl_pct_4h = abs(e_sw_show - sl_sw_show) / e_sw_show if e_sw_show > 0 else 0
+            dist_tp_pct_4h = abs(tp_sw_show - e_sw_show) / e_sw_show if e_sw_show > 0 else 0
+
+            score_swing = 0
+            if "A Favor" in tend_str_4h: score_swing += 20
+            if dist_sl_pct_4h < 0.03: score_swing += 20
+            if "LONG" in dir_4h_calc and ("ABSORCIÓN" in divergencia_cvd or "Normal" in divergencia_cvd): score_swing += 20
+            if "SHORT" in dir_4h_calc and ("DISTRIBUCIÓN" in divergencia_cvd or "Normal" in divergencia_cvd): score_swing += 20
+            if 40 <= ind_4h['rsi'] <= 60: score_swing += 20
+            if vwap_std > 0:
+                if "LONG" in dir_4h_calc and e_sw_show > (vwap_actual + vwap_std): score_swing -= 25 
+                if "SHORT" in dir_4h_calc and e_sw_show < (vwap_actual - vwap_std): score_swing -= 25 
+
+            col_score_sw = GREEN if score_swing >= 75 else YELLOW if score_swing >= 50 else RED
+
+            signal_swing = f"{DARK_GRAY}⏳ ESPERAR PATRÓN / SIN FUERZA{RESET}"
+            if dist_4h < 3.0 and (ind_4h['adx_slope'] < 0 or ind_4h['adx'] < 23):
+                if "LONG" in dir_4h_calc and "ROJO OSCURO" in ind_4h['valle_color']: 
+                    if ind_4h['rsi'] >= 70: signal_swing = f"{YELLOW}🚫 BLOQUEADO: RSI Sobrecomprado ({ind_4h['rsi']:.1f}){RESET}"
+                    elif ls_ratio > 2.5: signal_swing = f"{RED}🚫 BLOQUEADO: Minoristas muy LONG ({ls_ratio:.2f}){RESET}"
+                    elif simbolo_rest != "BTCUSDT" and btc_macro_trend == "BAJISTA": signal_swing = f"{RED}🚫 BLOQUEADO: BTC Trend Bajista{RESET}"
+                    elif "DISTRIBUCIÓN" in divergencia_cvd: signal_swing = f"{RED}🚫 BLOQUEADO: Distribución Detectada{RESET}"
+                    else: signal_swing = f"{GREEN}{BOLD}✅ GATILLO LONG CONFIRMADO{RESET}"
+                elif "SHORT" in dir_4h_calc and "VERDE OSCURO" in ind_4h['valle_color']: 
+                    if ind_4h['rsi'] <= 30: signal_swing = f"{YELLOW}🚫 BLOQUEADO: RSI Sobrevendido ({ind_4h['rsi']:.1f}){RESET}"
+                    elif ls_ratio < 0.6: signal_swing = f"{RED}🚫 BLOQUEADO: Minoristas muy SHORT ({ls_ratio:.2f}){RESET}"
+                    elif simbolo_rest != "BTCUSDT" and btc_macro_trend == "ALCISTA": signal_swing = f"{RED}🚫 BLOQUEADO: BTC Trend Alcista{RESET}"
+                    elif "ABSORCIÓN" in divergencia_cvd: signal_swing = f"{RED}🚫 BLOQUEADO: Absorción Detectada{RESET}"
+                    else: signal_swing = f"{RED}{BOLD}✅ GATILLO SHORT CONFIRMADO{RESET}"
+
+            # FILTRO DE MADUREZ
+            if madurez_pct < 100:
+                if "CONFIRMADO" in signal_scalp: signal_scalp = f"{col_madurez}🕒 PRE-SEÑAL (Estabilizando al {madurez_pct:.0f}%){RESET}"
+                if "CONFIRMADO" in signal_swing: signal_swing = f"{col_madurez}🕒 PRE-SEÑAL (Estabilizando al {madurez_pct:.0f}%){RESET}"
+
+            # ALERTAS Y CSV
+            if madurez_pct == 100 and ("CONFIRMADO" in signal_scalp or "CONFIRMADO" in signal_swing):
+                emitir_sonido()
+                msg_tg = (
+                    f"🚨 <b>[ALERTA DE TRADING] {simbolo_rest}</b> 🚨\n\n"
+                    f"<b>SCALPING (1H):</b>\nDir: {dir_1h_calc}\nEntrada: ${e_s_show:,.2f}\nTP: ${tp_s_show:,.2f}\nSL: ${sl_s_show:,.2f}\nScore: {score_scalp}%\n\n"
+                    f"<b>SWING (4H):</b>\nDir: {dir_4h_calc}\nEntrada: ${e_sw_show:,.2f}\nTP: ${tp_sw_show:,.2f}\nSL: ${sl_sw_show:,.2f}\nScore: {score_swing}%\n\n"
+                    f"<i>TradingLatino + Order Flow</i>"
+                )
+                enviar_telegram(msg_tg)
+                
+                fecha_actual = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                if "CONFIRMADO" in signal_scalp:
+                    datos_scalp = [fecha_actual, simbolo_rest, "1H", dir_1h_calc, round(e_s_show, 2), round(tp_s_show, 2), round(sl_s_show, 2), tend_str_1h, round(poc_price, 2), round(vwap_actual, 2), round(ls_ratio, 2), divergencia_cvd]
+                    registrar_alerta_csv(datos_scalp)
+                if "CONFIRMADO" in signal_swing:
+                    datos_swing = [fecha_actual, simbolo_rest, "4H", dir_4h_calc, round(e_sw_show, 2), round(tp_sw_show, 2), round(sl_sw_show, 2), tend_str_4h, round(poc_price, 2), round(vwap_actual, 2), round(ls_ratio, 2), divergencia_cvd]
+                    registrar_alerta_csv(datos_swing)
+
+            # ==================== RENDERIZADO VISUAL CON RICH TABLES (LAYOUT INSTITUCIONAL) ====================
+            
+            # --- HEADER ---
+            header_text = f"{CYAN}{frame_actual} LIVE{RESET} | [bold white]{simbolo_rest}[/] | PRECIO: [bold yellow]${precio_actual:,.2f}[/] | POC: ${poc_price:,.2f} | VWAP: ${vwap_actual:,.2f}\n"
+            header_text += f"Calibración de Algoritmo: [{barra_madurez}] {col_madurez}{madurez_pct:.0f}% ({txt_madurez}){RESET}"
+            panel_header = Panel(Align.center(Text.from_markup(header_text)), border_style="cyan", padding=(1, 0))
+
+            # --- TABLA 1: ESTRATEGIA TRADINGLATINO ---
+            table_tl = Table(show_header=True, header_style="bold magenta", expand=True, border_style="dim")
+            table_tl.add_column("TF", justify="center", width=4)
+            table_tl.add_column("Tendencia", justify="left")
+            table_tl.add_column("Valle Direccional", justify="left")
+            table_tl.add_column("Fuerza & Squeeze", justify="left")
+
+            table_tl.add_row(
+                "[bold]1D[/]", formatear_tendencia(tend_1d), v_1d_icon, 
+                f"RSI: {WHITE}{ind_1d['rsi']:.0f}{RESET} | ADX: {WHITE}{ind_1d['adx']:.0f}{RESET}"
             )
-            enviar_telegram(msg_tg)
+            table_tl.add_row(
+                "[bold]4H[/]", formatear_tendencia(tend_4h), v_4h_icon, 
+                f"{sqz_state_4h} | RSI: {WHITE}{ind_4h['rsi']:.0f}{RESET} | ADX: {WHITE}{ind_4h['adx']:.0f}{RESET}"
+            )
+            table_tl.add_row(
+                "[bold]1H[/]", formatear_tendencia(tend_1h), v_1h_icon, 
+                f"{sqz_state_1h} | RSI: {WHITE}{ind_1h['rsi']:.0f}{RESET} | ADX: {WHITE}{ind_1h['adx']:.0f}{RESET}"
+            )
+            panel_tl = Panel(table_tl, title="[1] MATRIZ TRADINGLATINO (1D - 4H - 1H)", border_style="magenta", title_align="left")
+
+            # --- TABLA 2: CEREBRO OPERATIVO ---
+            table_op = Table(show_header=False, expand=True, box=None)
+            table_op.add_column("Info", ratio=1)
             
-            fecha_actual = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            if "CONFIRMADO" in signal_scalp:
-                datos_scalp = [fecha_actual, simbolo_rest, "1H", dir_1h_calc, round(e_s_show, 2), round(tp_s_show, 2), round(sl_s_show, 2), tend_str_1h, round(poc_price, 2), round(vwap_actual, 2), round(ls_ratio, 2), divergencia_cvd]
-                registrar_alerta_csv(datos_scalp)
-            if "CONFIRMADO" in signal_swing:
-                datos_swing = [fecha_actual, simbolo_rest, "4H", dir_4h_calc, round(e_sw_show, 2), round(tp_sw_show, 2), round(sl_sw_show, 2), tend_str_4h, round(poc_price, 2), round(vwap_actual, 2), round(ls_ratio, 2), divergencia_cvd]
-                registrar_alerta_csv(datos_swing)
+            # Sub-tabla Scalp
+            t_scalp = Table(expand=True, border_style="cyan", padding=(0, 1))
+            t_scalp.add_column("📊 SCALPING (1H)", justify="center", style="bold cyan")
+            t_scalp.add_column("ENTRADA LIMIT", justify="center")
+            t_scalp.add_column("STOP LOSS", justify="center")
+            t_scalp.add_column("TAKE PROFIT", justify="center")
+            t_scalp.add_row(
+                f"{col_d_1h}{dir_1h_calc.replace('🚀', '').replace('☄️', '').strip()}{RESET} ({tend_str_1h})",
+                f"{YELLOW}${e_s_show:,.2f}{RESET}",
+                f"{RED}${sl_s_show:,.2f}{RESET} (-{dist_sl_pct_1h*100:.2f}%)",
+                f"{GREEN}${tp_s_show:,.2f}{RESET} (+{dist_tp_pct_1h*100:.2f}%)"
+            )
+            
+            # Sub-tabla Swing
+            t_swing = Table(expand=True, border_style="cyan", padding=(0, 1))
+            t_swing.add_column("📈 SWING (4H)", justify="center", style="bold cyan")
+            t_swing.add_column("ENTRADA LIMIT", justify="center")
+            t_swing.add_column("STOP LOSS", justify="center")
+            t_swing.add_column("TAKE PROFIT", justify="center")
+            t_swing.add_row(
+                f"{col_d_4h}{dir_4h_calc.replace('🚀', '').replace('☄️', '').strip()}{RESET} ({tend_str_4h})",
+                f"{YELLOW}${e_sw_show:,.2f}{RESET}",
+                f"{RED}${sl_sw_show:,.2f}{RESET} (-{dist_sl_pct_4h*100:.2f}%)",
+                f"{GREEN}${tp_sw_show:,.2f}{RESET} (+{dist_tp_pct_4h*100:.2f}%)"
+            )
 
-        # ==================== PANTALLA (ALINEADA Y LIMPIA) ====================
-        print("") 
-        imprimir_separador_caja("top", CYAN)
-        imprimir_linea_caja(f"[{simbolo_rest}] PRECIO: ${precio_actual:,.2f} | POC: ${poc_price:,.2f} | VWAP: ${vwap_actual:,.2f}", align="center")
-        imprimir_linea_caja(f"Madurez Analisis: [{barra_madurez}] {col_madurez}{madurez_pct:.0f}% ({txt_madurez}){RESET}", align="center")
-        imprimir_separador_caja("medio", CYAN)
-        
-        # Bloque 1: TradingLatino Top-Down
-        imprimir_linea_caja(f"{MAGENTA}[1] ESTRATEGIA TRADINGLATINO (ANALISIS 1D - 4H - 1H){RESET}")
-        
-        imprimir_linea_caja(f"{DARK_GRAY}>> DIARIO (1D):{RESET} Tend: {col_t_1d}{tend_1d:<7}{RESET} | Dir: {c_v_1d}■■ {v_1d}{RESET} {DARK_GRAY}[Act: {ind_1d['valle']:.2f}]{RESET}")
-        
-        imprimir_linea_caja(f"{DARK_GRAY}>> SWING  (4H):{RESET} Tend: {col_t_4h}{tend_4h:<7}{RESET} | Dir: {c_v_4h}■■ {v_4h}{RESET} {DARK_GRAY}[Act: {ind_4h['valle']:.2f}]{RESET}")
-        imprimir_linea_caja(f"   Volatil (Sqz): {sqz_state_4h} | RSI: {WHITE}{ind_4h['rsi']:.1f}{RESET} | ATR: ${ind_4h['atr']:.2f}")
-        imprimir_linea_caja(f"   Fuerza  (ADX): {WHITE}{ind_4h['adx']:.1f} ({'+' if ind_4h['adx_slope']>0 else '-'}){RESET} | Dist EMA55: {dist_4h:.2f}%")
-        
-        imprimir_linea_caja(f"{DARK_GRAY}>> SCALP  (1H):{RESET} Tend: {col_t_1h}{tend_1h:<7}{RESET} | Dir: {c_v_1h}■■ {v_1h}{RESET} {DARK_GRAY}[Act: {ind_1h['valle']:.2f}]{RESET}")
-        imprimir_linea_caja(f"   Volatil (Sqz): {sqz_state_1h} | RSI: {WHITE}{ind_1h['rsi']:.1f}{RESET} | ATR: ${ind_1h['atr']:.2f}")
-        imprimir_linea_caja(f"   Fuerza  (ADX): {WHITE}{ind_1h['adx']:.1f} ({'+' if ind_1h['adx_slope']>0 else '-'}){RESET} | Dist EMA55: {dist_1h:.2f}%")
-        
-        imprimir_separador_caja("medio", CYAN)
-        
-        # Bloque 2: Order Flow & Institucionales
-        cvd = stats_mercado['cvd_sesion']
-        c_cvd = GREEN if cvd > 0 else RED
-        c_fund = RED if funding_rate > 0.01 else GREEN if funding_rate < -0.01 else YELLOW
-        
-        imprimir_linea_caja(f"{MAGENTA}[2] ORDER FLOW, MANIPULACION Y MACRO FILTROS{RESET}")
-        
-        vwap_up = vwap_actual + (vwap_std * 2)
-        vwap_dn = vwap_actual - (vwap_std * 2)
-        imprimir_linea_caja(f"Bandas de VWAP(±2SD): Alta: {RED}${vwap_up:,.0f}{RESET} / Baja: {GREEN}${vwap_dn:,.0f}{RESET}")
-        imprimir_linea_caja(f"Dominancia de Cinta : {GREEN}Ballenas {pct_ballenas:.1f}%{RESET} vs {RED}Minoristas {pct_minorista:.1f}%{RESET}")
-        
-        col_btc = GREEN if btc_macro_trend == "ALCISTA" else RED if btc_macro_trend == "BAJISTA" else YELLOW
-        imprimir_linea_caja(f"Tendencia Rey (BTC) : {col_btc}{btc_macro_trend}{RESET} | Open Interest: {WHITE}{open_interest:,.0f}{RESET}")
-        
-        col_ls = RED if ls_ratio > 2.0 else GREEN if ls_ratio < 1.0 else YELLOW
-        imprimir_linea_caja(f"Retail L/S Ratio    : {col_ls}{ls_ratio:.2f}{RESET} | Funding Rate : {c_fund}{funding_rate:+.4f}%{RESET}")
-        
-        imprimir_separador_caja("medio", CYAN)
+            str_op_extra = (
+                f"🧠 [bold]Lógica Operativa (1H):[/] {logica_1h}\n"
+                f"🎯 [bold]Confluencia Scalp:[/] {col_score_sc}{score_scalp}%{RESET} | Veredicto: {signal_scalp}\n"
+                f"🛡️ [bold]Muro Scalp:[/] ${escudo_usd_scalp:,.0f} protegiendo SL.\n\n"
+                f"🧠 [bold]Lógica Operativa (4H):[/] {logica_4h}\n"
+                f"🎯 [bold]Confluencia Swing:[/] {col_score_sw}{score_swing}%{RESET} | Veredicto: {signal_swing}\n"
+                f"🛡️ [bold]Muro Swing:[/] ${escudo_usd_swing:,.0f} protegiendo SL."
+            )
 
-        # Bloque 3: HFT y Liquidaciones
-        imprimir_linea_caja(f"{MAGENTA}[3] MICROESTRUCTURA INSTITUCIONAL Y MUROS HFT{RESET}")
-        
-        str_barra = dibujar_barra(pct_compradores)
-        imprimir_linea_caja(f"Imbalance Libro: [{str_barra}] {GREEN}Toros {pct_compradores:.0f}%{RESET} vs {RED}Osos {100-pct_compradores:.0f}%{RESET}")
-        imprimir_linea_caja(f"Divergencia CVD: {col_div}{divergencia_cvd}{RESET}")
-        
-        msg_resist = f"Resist. (Macro): {DARK_RED}${master_ask[0]:,.0f}{RESET} (+{(master_ask[0]-precio_actual)/precio_actual*100:.2f}%) -> {master_ask[1]:,.2f} {moneda_base}"
-        imprimir_linea_caja(msg_resist)
-        msg_soport = f"Soporte (Macro): {DARK_GREEN}${master_bid[0]:,.0f}{RESET} ({(master_bid[0]-precio_actual)/precio_actual*100:.2f}%) -> {master_bid[1]:,.2f} {moneda_base}"
-        imprimir_linea_caja(msg_soport)
+            table_op.add_row(t_scalp)
+            table_op.add_row(t_swing)
+            table_op.add_row(Panel(Text.from_markup(str_op_extra), border_style="dim"))
+            
+            panel_op = Panel(table_op, title="[2] PROYECCIONES Y SEÑALES ALGORÍTMICAS", border_style="cyan", title_align="left")
 
-        imprimir_separador_caja("medio", CYAN)
+            # --- TABLA 3: ORDER FLOW & HFT ---
+            table_of = Table(show_header=False, expand=True, box=None)
+            table_of.add_column("Col1")
+            
+            cvd = stats_mercado['cvd_sesion']
+            c_fund = RED if funding_rate > 0.01 else GREEN if funding_rate < -0.01 else YELLOW
+            vwap_up = vwap_actual + (vwap_std * 2)
+            vwap_dn = vwap_actual - (vwap_std * 2)
+            col_btc = GREEN if btc_macro_trend == "ALCISTA" else RED if btc_macro_trend == "BAJISTA" else YELLOW
+            col_ls = RED if ls_ratio > 2.0 else GREEN if ls_ratio < 1.0 else YELLOW
+            
+            str_barra = dibujar_barra(pct_compradores)
+            
+            macro_text = (
+                f"🐋 [bold]Dominancia Cintas:[/] {GREEN}Whales {pct_ballenas:.1f}%{RESET} vs {RED}Retail {pct_minorista:.1f}%{RESET}\n"
+                f"👑 [bold]Tendencia Rey (BTC):[/] {col_btc}{btc_macro_trend}{RESET} | Open Int: {WHITE}{open_interest:,.0f}{RESET}\n"
+                f"⚖️ [bold]Retail L/S Ratio:[/] {col_ls}{ls_ratio:.2f}{RESET} | Funding: {c_fund}{funding_rate:+.4f}%{RESET}\n"
+                f"📊 [bold]Bandas VWAP (±2σ):[/] Alta: {RED}${vwap_up:,.0f}{RESET} / Baja: {GREEN}${vwap_dn:,.0f}{RESET}\n\n"
+                f"📈 [bold]Divergencia CVD:[/] {col_div}{divergencia_cvd}{RESET}\n"
+                f"⚡ [bold]Velocidad Tape:[/] {estado_tape} ({tape_speed:.1f} trades/s)"
+            )
+            
+            hft_text = (
+                f"📚 [bold]Imbalance Libro:[/] [{str_barra}]\n"
+                f"   {GREEN}Toros {pct_compradores:.0f}%{RESET} vs {RED}Osos {100-pct_compradores:.0f}%{RESET}\n\n"
+                f"🧱 [bold]Muro Resistencia:[/] {DARK_RED}${master_ask[0]:,.0f}{RESET} (+{(master_ask[0]-precio_actual)/precio_actual*100:.2f}%)\n"
+                f"   Volumen: {master_ask[1]:,.2f} {moneda_base}\n"
+                f"🛡️ [bold]Muro Soporte:[/] {DARK_GREEN}${master_bid[0]:,.0f}{RESET} ({(master_bid[0]-precio_actual)/precio_actual*100:.2f}%)\n"
+                f"   Volumen: {master_bid[1]:,.2f} {moneda_base}"
+            )
+            
+            liq_text = (
+                f"[bold red]💥 Liquidaciones Arriba (Shorts)[/]\n"
+                f"100x -> {formato_liq(liq_short_100x, precio_actual, v_s_100x, moneda_base)}\n"
+                f" 50x -> {formato_liq(liq_short_50x, precio_actual, v_s_50x, moneda_base)}\n"
+                f" 25x -> {formato_liq(liq_short_25x, precio_actual, v_s_25x, moneda_base)}\n\n"
+                f"[bold green]💥 Liquidaciones Abajo (Longs)[/]\n"
+                f"100x -> {formato_liq(liq_long_100x, precio_actual, v_l_100x, moneda_base)}\n"
+                f" 50x -> {formato_liq(liq_long_50x, precio_actual, v_l_50x, moneda_base)}\n"
+                f" 25x -> {formato_liq(liq_long_25x, precio_actual, v_l_25x, moneda_base)}"
+            )
 
-        # Bloque 3.5: Mapa de Calor de Liquidaciones
-        imprimir_linea_caja(f"{MAGENTA}[3.5] MAPA DE CALOR DE LIQUIDACIONES (MAGNET ZONES){RESET}")
-        
-        msg_zonas_altas = (
-            f"Zonas Altas (Shorts): {RED}100x -> {formato_liq(liq_short_100x, precio_actual)}{RESET} | "
-            f"{RED}50x -> {formato_liq(liq_short_50x, precio_actual)}{RESET} | {RED}25x -> {formato_liq(liq_short_25x, precio_actual)}{RESET}"
-        )
-        imprimir_linea_caja(msg_zonas_altas)
-        
-        msg_zonas_bajas = (
-            f"Zonas Bajas (Longs) : {GREEN}100x -> {formato_liq(liq_long_100x, precio_actual)}{RESET} | "
-            f"{GREEN}50x -> {formato_liq(liq_long_50x, precio_actual)}{RESET} | {GREEN}25x -> {formato_liq(liq_long_25x, precio_actual)}{RESET}"
-        )
-        imprimir_linea_caja(msg_zonas_bajas)
-        
-        imprimir_separador_caja("medio", CYAN)
-        
-        # Bloque 4: Proyecciones Operativas Dobles y Scorings de Confluencia
-        imprimir_linea_caja(f"{MAGENTA}[4] PROYECCIONES OPERATIVAS Y ANALISIS DE PROBABILIDAD{RESET}")
-        
-        imprimir_linea_caja(f"{CYAN}--- OPERACION SCALPING (1H) ------------------------------------------------{RESET}")
-        imprimir_linea_caja(f"Dir: {col_d_1h}{dir_1h_calc:<5}{RESET} ({tend_str_1h}) | Veredicto: {signal_scalp}")
-        msg_scalp = f"ENTRADA LIMIT: {YELLOW}${e_s_show:,.2f}{RESET} | SL: {RED}${sl_s_show:,.2f}{RESET} (-{dist_sl_pct_1h*100:.2f}%) | TP: {GREEN}${tp_s_show:,.2f}{RESET} (+{dist_tp_pct_1h*100:.2f}%)"
-        imprimir_linea_caja(msg_scalp)
-        msg_escudo_s = f"Poder del Muro : {WHITE}${escudo_usd_scalp:,.0f} USD{RESET} protegiendo tu Stop Loss."
-        imprimir_linea_caja(msg_escudo_s)
-        msg_score_s = f"Confluencia    : {col_score_sc}{score_scalp}%{RESET} de probabilidad institucional."
-        imprimir_linea_caja(msg_score_s)
-        
-        imprimir_linea_caja(f"{CYAN}--- OPERACION SWING (4H) ---------------------------------------------------{RESET}")
-        imprimir_linea_caja(f"Dir: {col_d_4h}{dir_4h_calc:<5}{RESET} ({tend_str_4h}) | Veredicto: {signal_swing}")
-        msg_swing = f"ENTRADA LIMIT: {YELLOW}${e_sw_show:,.2f}{RESET} | SL: {RED}${sl_sw_show:,.2f}{RESET} (-{dist_sl_pct_4h*100:.2f}%) | TP: {GREEN}${tp_sw_show:,.2f}{RESET} (+{dist_tp_pct_4h*100:.2f}%)"
-        imprimir_linea_caja(msg_swing)
-        msg_escudo_sw = f"Poder del Muro : {WHITE}${escudo_usd_swing:,.0f} USD{RESET} protegiendo tu Stop Loss."
-        imprimir_linea_caja(msg_escudo_sw)
-        msg_score_sw = f"Confluencia    : {col_score_sw}{score_swing}%{RESET} de probabilidad institucional."
-        imprimir_linea_caja(msg_score_sw)
-        
-        imprimir_separador_caja("bot", CYAN)
-        print(f"{DARK_GRAY}Actualizando... Ctrl+C salir | Sonidos: {'ON' if ALERTAS_SONORAS else 'OFF'} | Logging: Activo{RESET}")
+            table_of.add_row(Panel(Text.from_markup(macro_text), title="🌐 MACRO & ORDER FLOW", border_style="dim"))
+            table_of.add_row(Panel(Text.from_markup(hft_text), title="🧱 MICROESTRUCTURA HFT", border_style="dim"))
+            table_of.add_row(Panel(Text.from_markup(liq_text), title="🧲 MAPA DE LIQUIDACIONES", border_style="dim"))
+
+            panel_right = Panel(table_of, title="[3] ANÁLISIS DE FLUJO INSTITUCIONAL", border_style="magenta", title_align="left")
+
+            # --- SÍNTESIS DE MERCADO (TEXTO SINTETIZADO) ---
+            txt_macro = f"Bitcoin dicta un sesgo [bold]{btc_macro_trend}[/]. "
+            if ls_ratio > 2.5: txt_macro += f"Exceso de minoristas apostando al alza (L/S {ls_ratio:.1f}), alto riesgo de liquidaciones en cascada hacia [bold red]abajo[/]."
+            elif ls_ratio < 0.8: txt_macro += f"Exceso de minoristas apostando a la baja (L/S {ls_ratio:.1f}), combustible para un probable [bold green]Short Squeeze[/]."
+            else: txt_macro += f"Sentimiento minorista equilibrado (L/S {ls_ratio:.1f})."
+
+            f_1d = "fuerte" if ind_1d['adx'] > 23 else "débil"
+            txt_largo = f"Estructura [bold]{tend_1d}[/] {f_1d} (ADX: {ind_1d['adx']:.0f}). "
+            if "ALCISTA" in tend_1d: txt_largo += "El panorama general favorece fuertemente las posiciones de [bold green]COMPRA[/] en soportes clave."
+            elif "BAJISTA" in tend_1d: txt_largo += "El panorama general advierte cautela; priorizar posiciones [bold red]CORTAS[/] en los rebotes a medias móviles."
+            else: txt_largo += "Fase de consolidación mayor; operar exclusivamente los [bold yellow]extremos del rango[/]."
+
+            # Evaluacion del rango vs tendencia alineada
+            if dir_1h_calc != dir_4h_calc:
+                txt_medio = f"{YELLOW}⚠️ MERCADO EN RANGO / CONTRADICCIÓN{RESET} (1H apunta {dir_1h_calc.replace('🚀','').replace('☄️','').strip()} vs 4H apunta {dir_4h_calc.replace('🚀','').replace('☄️','').strip()}).\n"
+                txt_medio += f"Límites Macro (4H): Techo del Rango {RED}${rango_alto:,.2f}{RESET} | Piso del Rango {GREEN}${rango_bajo:,.2f}{RESET}. "
+                txt_medio += f"Es común operar rebotes dentro de los límites hasta que uno de los marcos rompa el rango con volumen."
+            else:
+                txt_medio = f"{GREEN}🔥 MERCADO ALINEADO TENDENCIALMENTE{RESET} (Fuerza {dir_1h_calc.replace('🚀','').replace('☄️','').strip()} confirmada en 1H y 4H).\n"
+                txt_medio += f"Mayor probabilidad de éxito y ruptura fuerte. Priorizar posiciones a favor de esta dirección."
+                
+            if ind_4h.get('sqz_on', False): txt_medio += " [bold red]¡Atención! Compresión extrema de volatilidad detectada en 4H.[/]"
+
+            txt_corto = f"Microestructura orientada al [bold]{dir_1h_calc.replace('🚀', '').replace('☄️', '').strip()}[/]. "
+            if "ABSORCIÓN" in divergencia_cvd: txt_corto += "[bold green]Se detectan ballenas ABSORBIENDO ventas agresivas con órdenes pasivas (Soporte Institucional).[/]"
+            elif "DISTRIBUCIÓN" in divergencia_cvd: txt_corto += "[bold red]Se detectan ballenas DISTRIBUYENDO en la parte alta contra compras retail (Resistencia Institucional).[/]"
+            else: txt_corto += f"Presión del Orderbook: {pct_compradores:.0f}% alcista. Flujo de capital estándar."
+
+            # -- RECOMENDACIÓN Y PROYECCIÓN MÁS PROBABLE --
+            reco_txt = ""
+            if "CONFIRMADO" in signal_scalp and "CONFIRMADO" in signal_swing and dir_1h_calc == dir_4h_calc:
+                reco_txt = f"[bold green]ALTA PROBABILIDAD:[/bold green] Alineación temporal perfecta en {dir_1h_calc.replace('🚀','').replace('☄️','').strip()}. Ejecutar orden Limit respetando el SL propuesto."
+            elif "CONFIRMADO" in signal_scalp:
+                reco_txt = f"[bold yellow]SCALP ACTIVO:[/bold yellow] Gatillo direccional {dir_1h_calc.replace('🚀','').replace('☄️','').strip()} en 1H. Riesgo moderado, asegurar ganancias rápido."
+            elif "CONFIRMADO" in signal_swing:
+                reco_txt = f"[bold yellow]SWING ACTIVO:[/bold yellow] Gatillo direccional {dir_4h_calc.replace('🚀','').replace('☄️','').strip()} en 4H. Mayor recorrido, gestionar con paciencia."
+            else:
+                reco_txt = "[bold dark_gray]ESPERAR:[/bold dark_gray] Sin confirmaciones claras en este momento. Preservar capital y monitorear los muros o los extremos del rango."
+
+            pool_arriba = max([(liq_short_100x, v_s_100x), (liq_short_50x, v_s_50x), (liq_short_25x, v_s_25x)], key=lambda x: x[1])
+            pool_abajo = max([(liq_long_100x, v_l_100x), (liq_long_50x, v_l_50x), (liq_long_25x, v_l_25x)], key=lambda x: x[1])
+            
+            if "LONG" in dir_1h_calc:
+                proy_txt = f"Barrido de liquidez superior hacia la zona de los [bold cyan]${pool_arriba[0]:,.0f}[/bold cyan] ({pool_arriba[1]:,.0f} {moneda_base} descansando)."
+            else:
+                proy_txt = f"Búsqueda de stops e imán de liquidaciones inferiores hacia los [bold cyan]${pool_abajo[0]:,.0f}[/bold cyan] ({pool_abajo[1]:,.0f} {moneda_base} vulnerables)."
+                
+            if ind_1h.get('sqz_on', False) or ind_4h.get('sqz_on', False):
+                proy_txt += " [bold red]Alta probabilidad de ruptura brusca pronto.[/]"
+
+            table_sintesis = Table(show_header=False, expand=True, box=None, padding=(0, 1))
+            table_sintesis.add_column("Periodo", style="bold white", width=22)
+            table_sintesis.add_column("Análisis", justify="left")
+            
+            table_sintesis.add_row("🌍 [bold cyan]Visión Macro[/]", txt_macro)
+            table_sintesis.add_row("📅 [bold magenta]Largo Plazo (1D)[/]", txt_largo)
+            table_sintesis.add_row("⏳ [bold yellow]Medio Plazo (4H)[/]", txt_medio)
+            table_sintesis.add_row("⚡ [bold green]Corto Plazo (1H)[/]", txt_corto)
+            table_sintesis.add_row("", "")
+            table_sintesis.add_row("🎯 [bold yellow]Recomendación[/]", reco_txt)
+            table_sintesis.add_row("🔮 [bold cyan]Proy. Algorítmica[/]", proy_txt)
+
+            panel_sintesis = Panel(table_sintesis, title="[4] SÍNTESIS CONTEXTUAL DEL MERCADO", border_style="green", title_align="left")
+
+            # --- CONSTRUCCIÓN DE LA GRILLA PRINCIPAL ---
+            main_grid = Table.grid(expand=True, padding=(0, 1))
+            main_grid.add_column(ratio=6) # Columna Izquierda (Estrategia)
+            main_grid.add_column(ratio=4) # Columna Derecha (Order Flow)
+            
+            left_group = Group(panel_tl, panel_op)
+            main_grid.add_row(left_group, panel_right)
+
+            # --- RENDER FINAL ---
+            footer = Text.from_markup(f"{DARK_GRAY}Presiona Ctrl+C para salir | Sonidos: {'ON 🔊' if ALERTAS_SONORAS else 'OFF 🔇'} | Auto-Guardado CSV: Activo{RESET}", justify="center")
+            
+            pantalla = Group(panel_header, main_grid, panel_sintesis, footer)
+            live.update(pantalla)
 
 if __name__ == "__main__":
     try:
@@ -893,4 +1028,4 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         is_running = False 
         logging.info("Apagado seguro iniciado por el usuario.")
-        print(f"\n{RED}Saliendo del Radar... Exitos en tu trading!{RESET}")
+        console.print(f"\n{RED}Saliendo del Radar... ¡Éxitos en tu trading! 🚀{RESET}")
