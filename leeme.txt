@@ -1,0 +1,66 @@
+===========================================================================
+        RADAR INSTITUCIONAL: TRADINGLATINO + HFT + ORDER FLOW
+===========================================================================
+Este documento contiene la guía completa para instalar y ejecutar el 
+script 'Radar.py'. Este sistema es un radar avanzado que combina análisis 
+multitemporal (estrategia TradingLatino), Order Flow, manipulaciones de 
+liquidez (ballenas) y zonas de magnetismo.
+
+1. REQUISITOS PREVIOS
+---------------------
+- Python 3.8 o superior instalado.
+- Conexión a internet estable.
+- Terminal o consola de comandos (PowerShell, CMD moderno o Bash).
+
+2. ESTRUCTURA DE ARCHIVOS NECESARIA
+-----------------------------------
+Asegúrate de tener los siguientes archivos en la misma carpeta:
+- Radar.py           (El código principal del motor).
+- requirements.txt   (Lista de las librerías necesarias).
+- leeme.txt          (Este manual de instrucciones).
+
+* Nota: Al ejecutar el programa por primera vez, se crearán 
+automáticamente los archivos 'config_radar.json' (para Telegram), 
+'radar_hft.log' (para el registro de eventos en segundo plano) y 
+'registro_senales.csv' (historial de alertas operativas).
+
+3. INSTRUCCIONES DE INSTALACIÓN (PASO A PASO)
+---------------------------------------------
+Abre una terminal dentro de la carpeta del proyecto y ejecuta los 
+siguientes comandos:
+
+PASO A: Crear un entorno virtual (Recomendado)
+   python -m venv venv
+
+PASO B: Activar el entorno virtual
+   - En Windows:       venv\Scripts\activate
+   - En Mac/Linux:     source venv/bin/activate
+
+PASO C: Instalar las dependencias externas
+   pip install -r requirements.txt
+
+4. CONFIGURACIÓN INICIAL
+------------------------
+Al abrir el programa, te pedirá el siguiente dato:
+1. "Moneda a analizar": El par que quieres operar (ej: BTCUSDT, ETHUSDT).
+
+Para agregar alertas automáticas a Telegram, detén el bot (Ctrl+C), abre el 
+archivo 'config_radar.json' que se acaba de crear y agrega tu 
+TELEGRAM_BOT_TOKEN y TELEGRAM_CHAT_ID.
+
+5. EJECUCIÓN
+------------
+Con el entorno virtual activado, simplemente ejecuta:
+   python Radar.py
+
+6. NOTAS IMPORTANTES
+--------------------
+- El sistema utiliza Pandas y Pandas-TA para calcular la estrategia de 
+  TradingLatino y el Squeeze Momentum directamente con los datos matemáticos.
+- El radar tardará unos segundos iniciales en sincronizar los nodos de 
+  datos (Klines, Book, Macro y L/S Ratio).
+- Para detener el sistema de forma segura, presiona Ctrl + C.
+
+===========================================================================
+Desarrollado para análisis institucional, order flow y divergencias CVD.
+===========================================================================
