@@ -205,3 +205,13 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Private runtime configuration and telemetry
+config.json
+config_*.json
+session_data.json
+registro_senales.csv
+trading_signals_log.txt
+radar_hft.log
+*.pem
+*.key
