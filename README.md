@@ -1,27 +1,39 @@
-# 🚀 Radar Quant Institucional: TradingLatino + HFT + Order Flow
+# CryptoAnalisis — Monitor técnico y de flujo de órdenes
 
-Un escáner analítico avanzado para criptomonedas (Binance) diseñado para operar como un Fondo de Cobertura (Hedge Fund). Este script no toma decisiones a ciegas basándose solo en el precio; fusiona el **Análisis Técnico Multitemporal**, la **Microestructura del Libro de Órdenes (HFT)** y el **Flujo de Órdenes (Order Flow)** en tiempo real.
+Proyecto personal de investigación en **Python** que reúne análisis técnico multitemporal, datos de mercado de Binance y observaciones de microestructura. Su propósito es experimentar con integración de APIs, visualización de información y controles para señales simuladas; **no es un sistema de trading institucional validado**.
 
-El algoritmo actúa como un "escudo", bloqueando entradas falsas y calculando la confluencia matemática exacta para operaciones de Scalping (1H) y Swing (4H).
+## Capacidades del prototipo
 
----
+- Indicadores técnicos en distintas temporalidades, incluyendo EMA, ADX y Squeeze Momentum.
+- Consulta y procesamiento de order book, operaciones y métricas públicas disponibles en el proveedor.
+- Observaciones de flujo comprador/vendedor, liquidez y contexto de mercado.
+- Interfaz de terminal con Rich y registro local para estudio.
+- Sesiones HTTP con reintentos y protección ante algunos errores transitorios.
 
-## 🧠 Características Principales
+## Ejecución local
 
-* **📈 Estrategia TradingLatino Pura:** Algoritmos matemáticos nativos (sin depender de TradingView) para calcular el Squeeze Momentum (Regresión Lineal) y el ADX (RMA) en temporalidades de 1D, 4H y 1H.
-* **🐋 Order Flow y Manipulación:** Detector de divergencias de CVD (Absorción Alcista y Distribución Bajista) y medidor de la Velocidad de la Cinta (Trades por segundo).
-* **🧱 Microestructura HFT:** Lectura profunda del Order Book (5000 niveles) para detectar Muros Institucionales Reales e Imbalance entre Toros y Osos.
-* **🧲 Mapa de Calor de Liquidaciones:** Cálculo dinámico del POC (Point of Control) y las "Zonas Imán" donde los minoristas sobre-apalancados (25x, 50x, 100x) serán liquidados.
-* **🌍 Filtros Macro y Sentimiento:** Monitoreo en segundo plano de la tendencia del "Rey" (Bitcoin), el Ratio Global Long/Short de los minoristas, el Open Interest y el Funding Rate.
-* **🛡️ Gestión de Riesgo (Confluencia):** Sistema de Puntuación de 0% a 100% para validar gatillos, respaldado por un Stop Loss Híbrido Dinámico (Muro de Órdenes + Filtro ATR) y medición del capital (USD) que protege tu Stop Loss.
-* **⚡ Inmortalidad de Red:** Construido con `requests.Session`, Exponential Backoff y Threading Locks para soportar micro-cortes de internet y conexiones WebSockets persistentes las 24 horas sin crashear.
+Se recomienda Python 3.10 o 3.11 para las versiones de bibliotecas fijadas en el repositorio.
 
----
+```bash
+git clone https://github.com/augustogjmm/CryptoAnalisis-.git
+cd CryptoAnalisis-
+python -m venv .venv
+# Windows: .venv\Scripts\activate
+# Linux/macOS: source .venv/bin/activate
+pip install -r requirements.txt
+python Radar.py
+```
 
-## 🛠️ Instalación y Requisitos
+## Estructura
 
-Este bot requiere **Python 3.9 o superior**.
+- `Radar.py`: script principal de recopilación y análisis.
+- `requirements.txt`: bibliotecas Python.
+- `leeme.txt`: guía de uso de la versión original.
 
-1. Clona este repositorio o descarga el archivo `.py`:
-   ```bash
-   git clone [https://github.com/TU_USUARIO/Radar-Quant-HFT.git](https://github.com/TU_USUARIO/Radar-Quant-HFT.git)
+## Alcance y precauciones
+
+Este repositorio ilustra experimentación con fuentes de datos, análisis e integración. Las métricas no identifican necesariamente intenciones «institucionales» ni permiten anticipar precios con certeza. La disponibilidad depende de servicios externos. No se proporcionan resultados de rentabilidad validados ni recomendaciones de inversión.
+
+No publicar claves ni tokens de Binance o Telegram. Evitar guardar credenciales en el código o en el historial Git.
+
+**Autor:** [Augusto García Juárez Matorras](https://www.linkedin.com/in/augustog/) · [Portfolio ejecutivo](https://github.com/augustogjmm/Radar/blob/main/PORTFOLIO.md)
